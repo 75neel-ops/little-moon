@@ -200,12 +200,15 @@ st.set_page_config(page_title="Little Moon | Learn, practise, shine", page_icon=
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Nunito:wght@500;600;700;800;900&display=swap');
-:root { color-scheme:light; --sun:#7896d4; --ink:#243548; --muted:#4d5d70; --paper:#fffdf8; }
-html, body, [class*="css"] { font-family:'DM Sans',sans-serif; color:var(--ink); }
-.stApp { background: radial-gradient(ellipse at 80% 0%, #fff0cf 0%, transparent 29%), #fffdf8; }
+:root { color-scheme:light !important; --sun:#7896d4; --ink:#243548; --muted:#4d5d70; --paper:#fffdf8; }
+html, body, [class*="css"] { font-family:'DM Sans',sans-serif; color:#243548 !important; -webkit-text-fill-color:#243548; color-scheme:light !important; }
+.stApp, [data-testid="stAppViewContainer"] { background: radial-gradient(ellipse at 80% 0%, #fff0cf 0%, transparent 29%), #fffdf8 !important; color:#243548 !important; color-scheme:light !important; }
 .block-container { padding-top:1.5rem; max-width:1180px; }
-[data-testid="stSidebar"] { background:linear-gradient(170deg,#fff4db,#fffdf8 64%); border-right:1px solid #f2e6cf; }
-h1,h2,h3 { font-family:'Nunito',sans-serif; color:#263950; letter-spacing:-.035em; }
+[data-testid="stSidebar"] { background:linear-gradient(170deg,#fff4db,#fffdf8 64%) !important; border-right:1px solid #f2e6cf; color:#243548 !important; color-scheme:light !important; }
+[data-testid="stSidebar"] *, [data-testid="stSidebar"] label, [data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] *, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * { color:#243548 !important; -webkit-text-fill-color:#243548 !important; opacity:1 !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] > div, [data-testid="stSidebar"] input, [data-testid="stSidebar"] textarea { background:#fff !important; color:#243548 !important; -webkit-text-fill-color:#243548 !important; border-color:#aab5c4 !important; color-scheme:light !important; }
+[data-testid="stSidebar"] [data-baseweb="select"] *, [role="listbox"] *, [role="option"] { color:#243548 !important; -webkit-text-fill-color:#243548 !important; }
+h1,h2,h3 { font-family:'Nunito',sans-serif; color:#263950 !important; letter-spacing:-.035em; }
 .hero { background:linear-gradient(115deg,#e9edff,#f7f8ff 52%,#eef6ff); border:1px solid #dce5fb; border-radius:28px; padding:2rem 2.2rem; margin:.2rem 0 1.5rem; box-shadow:0 12px 36px #2639500a; }
 .hero h1 {font-size:2.65rem; margin:0;}.hero p {color:#4d5d70;font-size:1.02rem;margin:.4rem 0 0;}
 .sun {font-size:2.2rem; margin-right:.35rem;}
@@ -542,4 +545,5 @@ header()
 grade, subject, topic = render_setup()
 home(grade, subject, topic)
 st.markdown("<div style='text-align:center;color:#536174;padding:2rem 0 1rem'>🌙 Little Moon · Created by <b>NilanjanC</b> · Keep asking, keep growing.</div>", unsafe_allow_html=True)
+
 
