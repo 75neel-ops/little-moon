@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101a3d">
+  <meta name="description" content="Little Moon — CBSE learning for Classes 1–8.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Little Moon">
+  <link rel="icon" type="image/svg+xml" href="assets/little_moon_icon.svg">
+  <link rel="apple-touch-icon" href="app-icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <title>Little Moon | Learn, practise, shine</title>
+  <style>
+    *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;background:#101a3d;color:#f7f4e9;font-family:system-ui,-apple-system,Segoe UI,sans-serif}body{overflow:hidden}#app{position:fixed;inset:0;width:100%;height:100%;border:0;background:#fffdf8;display:none}#welcome{min-height:100%;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 72% 20%,#33416e 0,transparent 45%),#101a3d}.panel{width:min(520px,100%);padding:34px 28px;border:1px solid #667398;border-radius:26px;background:#1b2850;box-shadow:0 20px 65px #05091688;text-align:center}.moon{width:92px;height:92px;object-fit:contain}.panel h1{margin:14px 0 8px;font-size:clamp(2.3rem,8vw,3.4rem);letter-spacing:-.04em}.panel p{line-height:1.65;color:#d5def6}.help{margin-top:20px;padding:14px;border-radius:14px;background:#26365f;color:#e3eaff;font-size:.95rem}#install{border:0;border-radius:999px;padding:13px 22px;background:#f4d878;color:#101a3d;font-weight:800;font-size:1rem;cursor:pointer}.small{font-size:.84rem;color:#b6c2e0!important}
+  </style>
+</head>
+<body>
+  <main id="welcome">
+    <section class="panel" aria-live="polite">
+      <img class="moon" src="assets/little_moon_icon.svg" alt="Little Moon crescent moon icon">
+      <h1>Little Moon</h1>
+      <p>CBSE learning for Classes 1–8<br>Small steps, bright ideas, confident learning.</p>
+      <button id="install" type="button">🌙 Install Little Moon</button>
+      <div id="status" class="help">Little Moon is ready to connect. When the Streamlit app has been deployed, this page will open it here.</div>
+      <p id="install-help" class="small" hidden>On iPhone or iPad, use Share → Add to Home Screen. On desktop or Android, choose Install app in your browser menu.</p>
+      <p class="small">Created by NilanjanC</p>
+    </section>
+  </main>
+  <iframe id="app" title="Little Moon CBSE learning app"></iframe>
+  <script>
+    let deferredPrompt;
+    const installButton=document.getElementById('install');
+    const installHelp=document.getElementById('install-help');
+    window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredPrompt=event;});
+    installButton.addEventListener('click',async()=>{if(!deferredPrompt){installHelp.hidden=!installHelp.hidden;return;}deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;});
+    window.addEventListener('appinstalled',()=>{installButton.hidden=true;installHelp.hidden=true;});
+    async function loadApp(){
+      try{
+        const response=await fetch(`app-url.txt?update=${Date.now()}`,{cache:'no-store'});
+        const raw=(await response.text()).trim();
+        if(!response.ok||!/^https:\/\//i.test(raw))return;
+        const appUrl=new URL(raw);
+        if(!appUrl.hostname.endsWith('.streamlit.app'))return;
+        appUrl.searchParams.set('embed','true');
+        document.getElementById('app').src=appUrl.toString();
+        document.getElementById('app').style.display='block';
+        document.getElementById('welcome').style.display='none';
+      }catch(_){/* Keep the branded install screen available while offline. */}
+    }
+    loadApp();
+    if('serviceWorker' in navigator)navigator.serviceWorker.register('service-worker.js');
+  </script>
+</body>
+</html>
+
