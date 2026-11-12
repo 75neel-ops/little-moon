@@ -24,7 +24,11 @@ Never commit a real API key. Add it to the app's Secrets in Streamlit Community 
 
 1. In Streamlit Community Cloud, create an app from repository **`75neel-ops/little-moon`**, branch **`main`**, main file **`app.py`**.
 2. Add `GEMINI_API_KEY` under this app's **Settings → Secrets**.
-3. Deploy the app under its own public URL.
+3. Deploy the app under its own public URL. Copy that URL to `app-url.txt` in this repository and commit it so the branded install page can open the app.
+
+## Install on desktop or mobile
+
+The PWA page and moon icons are in this repository. Enable GitHub Pages for the `main` branch using the repository root as the source. Open `https://75neel-ops.github.io/little-moon/` and use your browser's **Install app** option. On iPhone or iPad, use **Share → Add to Home Screen**. The icon and installed name are **Little Moon**.
 
 The desktop and mobile install page will use Little Moon's own moon icon and name. The Razorpay button uses the public payment button ID supplied by the owner; do not add Razorpay secret keys here.
 
