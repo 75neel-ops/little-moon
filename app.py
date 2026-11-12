@@ -25,7 +25,7 @@ except ImportError:
 
 MODEL = "gemini-3.5-flash-lite"
 APP_NAME = "Little Moon"
-PWA_INSTALL_URL = "https://75neel-ops.github.io/deepbluemonkey/little-moon/"
+PWA_INSTALL_URL = "https://75neel-ops.github.io/little-moon/"
 
 SUBJECTS_BY_CLASS = {
     1: ["English", "Bengali", "Mathematics", "Environmental Studies", "Computer Studies", "Art Education"],
