@@ -1,6 +1,6 @@
 # Little Moon — CBSE Classes 1–8
 
-**Little Moon** is an independent Streamlit learning app for CBSE learners in Classes 1–8, created by **NilanjanC**. It has its own GitHub repository and app entry point, separate from Little Sun. Students choose a class, subject and suggested chapter, or enter a chapter from their school syllabus. Activities include key words, fresh multiple-choice practice with explanations, custom-mark timed question papers, PDF downloads, and fun facts.
+**Little Moon** is an independent Streamlit learning app for CBSE learners in Classes 1–8, created by **NilanjanC**. Students choose a class, subject and suggested chapter, or enter a chapter from their school syllabus. Activities include key words, fresh multiple-choice practice with explanations, custom-mark timed question papers, PDF downloads, and fun facts.
 
 The broad chapter suggestions are CBSE/NCERT-aligned examples. Schools may use different textbooks, subject combinations or chapter names, so students can enter their own topic. English and Bengali are the language subjects offered; other generated content is in English. These suggestions are not a substitute for a school's current syllabus.
 
@@ -24,7 +24,7 @@ Never commit a real API key. Add it to the app's Secrets in Streamlit Community 
 
 1. In Streamlit Community Cloud, create an app from repository **`75neel-ops/little-moon`**, branch **`main`**, main file **`app.py`**.
 2. Add `GEMINI_API_KEY` under this app's **Settings → Secrets**.
-3. Deploy. This is a distinct deployment with no runtime or repo dependency on Little Sun.
+3. Deploy the app under its own public URL.
 
 The desktop and mobile install page will use Little Moon's own moon icon and name. The Razorpay button uses the public payment button ID supplied by the owner; do not add Razorpay secret keys here.
 
