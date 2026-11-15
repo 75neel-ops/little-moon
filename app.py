@@ -349,12 +349,13 @@ def access_gate() -> bool:
     st.info("Your time has ended. Choose a plan to continue using Little Moon.")
     st.subheader("Choose your access plan")
     plans = plan_options()
-    plan = st.selectbox("Plan", plans, format_func=lambda item: f"{item['label']} — ₹{item['amount_rupees']}", key="manual_payment_plan")
-    st.markdown(f"Use the Razorpay payment button below to pay **₹{plan['amount_rupees']}** for **{plan['label']}**. Enter the same email you use to sign in to Little Moon.")
-    st.caption("Before confirming in Razorpay, check that the amount shown matches the plan price above.")
+    st.markdown("Choose **one** plan in the Razorpay form below and set its quantity to 1. Leave every other plan at 0. Use the same email as your Little Moon sign-in.")
+    for option in plans:
+        st.markdown(f"- **{option['label']}** — ₹{option['amount_rupees']}")
+    st.caption("Before confirming payment, check that Razorpay's total matches the single plan you selected.")
     st.warning("Payment is checked manually, so access may take some time to activate. Please wait for confirmation and do not pay a second time while your payment is being checked.")
     st.caption("After paying, send your Razorpay payment ID or receipt and your Little Moon email to your teacher/app owner so they can verify the payment and activate your plan.")
-    button_id = razorpay_button_id(plan["id"])
+    button_id = razorpay_button_id()
     if button_id:
         components.html('<form><script src="https://checkout.razorpay.com/v1/payment-button.js" data-payment_button_id="' + button_id + '" async></script></form>', height=180, scrolling=True)
     else:
@@ -362,13 +363,9 @@ def access_gate() -> bool:
     return False
 
 
-def razorpay_button_id(plan_id: str) -> str:
-    try:
-        buttons = json.loads(secret("RAZORPAY_BUTTON_IDS", "{}"))
-        button_id = str(buttons.get(plan_id) or secret("RAZORPAY_PAYMENT_BUTTON_ID", "pl_Tvez6NOZsFJFmN")).strip()
-        return button_id if re.fullmatch(r"pl_[A-Za-z0-9]+", button_id) else ""
-    except (json.JSONDecodeError, AttributeError):
-        return ""
+def razorpay_button_id() -> str:
+    button_id = secret("RAZORPAY_PAYMENT_BUTTON_ID", "pl_U0PbKCBYERvpCA")
+    return button_id if re.fullmatch(r"pl_[A-Za-z0-9]+", button_id) else ""
 
 
 def admin_panel() -> None:
