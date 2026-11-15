@@ -47,16 +47,10 @@ Students sign in with a verified email code and receive a two-day trial. After i
    SUPABASE_ANON_KEY = "YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY"
    SUPABASE_SERVICE_ROLE_KEY = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
    ADMIN_PASSWORD = "CHOOSE_A_LONG_RANDOM_OWNER_PASSWORD"
-   RAZORPAY_PAYMENT_BUTTON_ID = "pl_Tvez6NOZsFJFmN"
+   RAZORPAY_PAYMENT_BUTTON_ID = "pl_U0PbKCBYERvpCA"
    ```
 
-The default plan prices are ₹50/15 days, ₹100/30 days, ₹250/90 days, ₹450/180 days, and ₹800/365 days. To use a separate Razorpay Payment Button for each plan, set `RAZORPAY_BUTTON_IDS` to a JSON map, for example:
-
-```toml
-RAZORPAY_BUTTON_IDS = '{"15-days":"pl_...","30-days":"pl_...","3-months":"pl_...","6-months":"pl_...","1-year":"pl_..."}'
-```
-
-To change plan labels, prices, or durations, set `PLAN_CONFIG_JSON` in Streamlit Secrets to a JSON list with `id`, `label`, `amount_rupees`, and `duration_days` fields.
+The Razorpay Custom Payment Button shown in the app contains all five plan items, so a single button ID is enough. The default plan prices are ₹50/15 days, ₹100/30 days, ₹250/90 days, ₹450/180 days, and ₹800/365 days. If you change the prices, update the button's items in Razorpay and set `PLAN_CONFIG_JSON` in Streamlit Secrets to a JSON list with `id`, `label`, `amount_rupees`, and `duration_days` fields so the owner approval form grants the matching duration.
 
 Before paying, students must check that Razorpay displays the same amount as their selected plan. A single fixed-amount button may require you to create separate buttons for the different prices. Until the Supabase settings and owner password are added, the app stays open and displays a setup notice.
 
