@@ -32,32 +32,33 @@ The PWA page and moon icons are in this repository. Enable GitHub Pages for the 
 
 The desktop and mobile install page will use Little Moon's own moon icon and name.
 
-## Student trials and paid access
+## Student trials and manual payment approval
 
-Little Moon requires a verified student/parent email sign-in. A new account receives one two-day trial. Access and payment entitlements are stored in Supabase so they persist across browser sessions. Razorpay Checkout is enabled through the separate `billing_service` FastAPI service; the existing Razorpay payment button is for donations and is not used to grant student access.
+Students sign in with a verified email code and receive a two-day trial. After it expires, Little Moon shows the plan prices and Razorpay payment button. Payment checks and access activation are manual: students send their Little Moon email and Razorpay payment ID/receipt to the teacher/app owner. The app tells them approval may take some time and asks them not to pay twice while waiting. The owner checks the payment in Razorpay, then grants the matching plan from **Owner: approve a payment** in the sidebar.
 
 ### Setup
 
 1. Create a Supabase project. In **Authentication → Email**, configure the email template to show the one-time code (`{{ .Token }}`), and keep email confirmation enabled.
-2. In Supabase SQL Editor, run [`billing_service/schema.sql`](billing_service/schema.sql).
-3. Deploy `billing_service` as a Render web service using [`billing_service/render.yaml`](billing_service/render.yaml). Set these environment variables there: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `RAZORPAY_KEY_ID`, and `RAZORPAY_KEY_SECRET`. Use the Razorpay **test** API keys first.
-4. Add Streamlit app Secrets: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `BILLING_API_URL` (the deployed billing service URL):
+2. In Supabase SQL Editor, run [`supabase_schema.sql`](supabase_schema.sql).
+3. In Streamlit Community Cloud, add these app Secrets. `SUPABASE_SERVICE_ROLE_KEY` and `ADMIN_PASSWORD` stay server-side and are never sent to students:
 
    ```toml
    SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
    SUPABASE_ANON_KEY = "YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY"
-   BILLING_API_URL = "https://YOUR_RENDER_SERVICE.onrender.com"
+   SUPABASE_SERVICE_ROLE_KEY = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+   ADMIN_PASSWORD = "CHOOSE_A_LONG_RANDOM_OWNER_PASSWORD"
+   RAZORPAY_PAYMENT_BUTTON_ID = "pl_Tvez6NOZsFJFmN"
    ```
 
-5. Configure Razorpay Dashboard to auto-capture payments. Set live API keys only after the test flow is verified. Never put the Razorpay secret or Supabase service-role key in Streamlit Secrets or browser code; keep them only in the billing service environment.
+The default plan prices are ₹50/15 days, ₹100/30 days, ₹250/90 days, ₹450/180 days, and ₹800/365 days. To use a separate Razorpay Payment Button for each plan, set `RAZORPAY_BUTTON_IDS` to a JSON map, for example:
 
-The default plans are ₹50/15 days, ₹100/30 days, ₹250/90 days, ₹450/180 days, and ₹800/365 days. To change them, set `PLAN_CONFIG_JSON` on the billing service to a JSON array such as:
-
-```json
-[{"id":"15-days","label":"15 days","amount_rupees":50,"duration_days":15}]
+```toml
+RAZORPAY_BUTTON_IDS = '{"15-days":"pl_...","30-days":"pl_...","3-months":"pl_...","6-months":"pl_...","1-year":"pl_..."}'
 ```
 
-Durations are fixed day counts (three months = 90 days, six months = 180 days, one year = 365 days). A successful payment is signature-checked and confirmed as captured with Razorpay before the service grants access.
+To change plan labels, prices, or durations, set `PLAN_CONFIG_JSON` in Streamlit Secrets to a JSON list with `id`, `label`, `amount_rupees`, and `duration_days` fields.
+
+Before paying, students must check that Razorpay displays the same amount as their selected plan. A single fixed-amount button may require you to create separate buttons for the different prices. Until the Supabase settings and owner password are added, the app stays open and displays a setup notice.
 
 ## Question freshness
 
