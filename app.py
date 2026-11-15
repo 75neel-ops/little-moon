@@ -7,6 +7,7 @@ import os
 import random
 import re
 import time
+import requests
 from pathlib import Path
 from typing import Any
 
@@ -196,6 +197,124 @@ CHAPTERS = {
 }
 
 st.set_page_config(page_title="Little Moon | Learn, practise, shine", page_icon=str(Path(__file__).parent / "assets" / "little_moon_icon.svg"), layout="wide", initial_sidebar_state="expanded")
+
+
+def secret(name: str, default: str = "") -> str:
+    try:
+        return str(st.secrets.get(name, default)).strip()
+    except Exception:
+        return os.getenv(name, default).strip()
+
+
+def auth_request(path: str, payload: dict[str, Any] | None = None, token: str = "") -> dict[str, Any]:
+    base = secret("SUPABASE_URL").rstrip("/")
+    anon = secret("SUPABASE_ANON_KEY")
+    if not base or not anon:
+        raise RuntimeError("Student sign-in is not configured yet. The app owner must add Supabase settings.")
+    headers = {"apikey": anon, "Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    response = requests.post(f"{base}/auth/v1/{path}", headers=headers, json=payload, timeout=15) if payload is not None else requests.get(f"{base}/auth/v1/{path}", headers=headers, timeout=15)
+    if not response.ok:
+        raise RuntimeError(response.json().get("msg") or response.json().get("message") or "Sign-in failed. Please try again.")
+    return response.json()
+
+
+def billing_request(path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    base = secret("BILLING_API_URL").rstrip("/")
+    token = st.session_state.get("student_token", "")
+    if not base:
+        raise RuntimeError("Billing service is not connected yet. Please contact the app owner.")
+    response = requests.post(f"{base}/{path.lstrip('/')}", json=payload, headers={"Authorization": f"Bearer {token}"}, timeout=20) if payload is not None else requests.get(f"{base}/{path.lstrip('/')}", headers={"Authorization": f"Bearer {token}"}, timeout=20)
+    if not response.ok:
+        try:
+            message = response.json().get("detail", "Billing request failed.")
+        except Exception:
+            message = "Billing request failed. Please try again."
+        raise RuntimeError(message)
+    return response.json()
+
+
+def billing_configured() -> bool:
+    return all(secret(name) for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "BILLING_API_URL"))
+
+
+def student_access() -> bool:
+    token = st.session_state.get("student_token", "")
+    if token:
+        try:
+            auth_request("user", token=token)
+            return True
+        except Exception:
+            st.session_state.pop("student_token", None)
+            st.session_state.pop("student_email", None)
+    st.subheader("Sign in to Little Moon")
+    st.write("Sign in with your email to start your two-day free trial or continue your plan.")
+    email = st.text_input("Student or parent email", key="auth_email").strip().lower()
+    if st.button("Send sign-in code", type="primary", key="send_login_code"):
+        if not email:
+            st.error("Enter an email address first.")
+        else:
+            try:
+                auth_request("otp", {"email": email, "create_user": True})
+                st.session_state.auth_code_sent = True
+                st.session_state.auth_email_pending = email
+                st.success("Check your email for a one-time sign-in code.")
+            except Exception as exc:
+                st.error(str(exc))
+    if st.session_state.get("auth_code_sent"):
+        code = st.text_input("Email code", key="auth_code")
+        if st.button("Verify code", key="verify_login_code"):
+            try:
+                data = auth_request("verify", {"email": st.session_state.auth_email_pending, "token": code.strip(), "type": "email"})
+                st.session_state.student_token = data["access_token"]
+                st.session_state.student_email = data["user"]["email"]
+                st.session_state.auth_code_sent = False
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+    return False
+
+
+def billing_gate() -> bool:
+    try:
+        status = billing_request("entitlement")
+    except Exception as exc:
+        st.error(f"Access check unavailable: {exc}")
+        st.stop()
+    if status.get("active"):
+        st.caption(f"Signed in as {st.session_state.get('student_email', '')} · {status.get('label', 'Access active')} · Access until {status.get('expires_at', '')[:10]}")
+        if st.button("Sign out", key="student_signout"):
+            st.session_state.pop("student_token", None)
+            st.session_state.pop("student_email", None)
+            st.rerun()
+        return True
+    if status.get("trial"):
+        st.info(f"Your free trial has ended. Choose a plan below to continue. {status.get('message', '')}")
+    else:
+        st.info("Your two-day free trial starts now. Enjoy Little Moon!")
+    try:
+        plans = billing_request("plans").get("plans", [])
+    except Exception as exc:
+        st.error(str(exc))
+        return False
+    st.subheader("Choose your access plan")
+    cols = st.columns(min(3, len(plans)))
+    for index, plan in enumerate(plans):
+        with cols[index % len(cols)]:
+            st.markdown(f"### {plan['label']}\n**₹{plan['amount_rupees']}**")
+            if st.button(f"Continue with {plan['label']}", key=f"buy_{plan['id']}", type="primary"):
+                try:
+                    order = billing_request("create-order", {"plan_id": plan["id"]})
+                    checkout = {"key": order["key_id"], "order_id": order["order_id"], "amount": order["amount_paise"], "currency": "INR", "name": "Little Moon", "description": plan["label"], "prefill": {"email": st.session_state.get("student_email", "")}, "theme": {"color": "#315a44"}}
+                    config = json.dumps(checkout).replace("</", "<\\/")
+                    api = json.dumps(secret("BILLING_API_URL").rstrip("/")).replace("</", "<\\/")
+                    token = json.dumps(st.session_state.student_token).replace("</", "<\\/")
+                    html = f'''<script src="https://checkout.razorpay.com/v1/checkout.js"></script><button id="pay" style="background:#315a44;color:white;padding:12px 18px;border:0;border-radius:10px;font-size:16px;cursor:pointer">Pay ₹{plan['amount_rupees']} securely</button><p id="msg"></p><script>const opts={config}; opts.handler=async function(r){{document.getElementById('msg').innerText='Verifying payment…'; const res=await fetch({api}+'/verify-payment',{{method:'POST',headers:{{'Content-Type':'application/json','Authorization':'Bearer '+{token}}},body:JSON.stringify(r)}}); const data=await res.json(); document.getElementById('msg').innerText=res.ok?'Payment verified! Return to the app and refresh.':(data.detail||'Verification failed. Contact support.');}}; document.getElementById('pay').onclick=()=>new Razorpay(opts).open();</script>'''
+                    components.html(html, height=150)
+                except Exception as exc:
+                    st.error(str(exc))
+    return False
 
 st.markdown("""
 <style>
@@ -542,8 +661,15 @@ def facts_panel(grade: int, subject: str, topic: str) -> None:
 
 
 header()
-grade, subject, topic = render_setup()
-home(grade, subject, topic)
-st.markdown("<div style='text-align:center;color:#536174;padding:2rem 0 1rem'>🌙 Little Moon · Created by <b>NilanjanC</b> · Keep asking, keep growing.</div>", unsafe_allow_html=True)
+if not billing_configured():
+    st.warning("Student access plans are being set up. Little Moon is temporarily open; paid access will begin once setup is complete.")
+    grade, subject, topic = render_setup()
+    home(grade, subject, topic)
+    st.markdown("<div style='text-align:center;color:#536174;padding:2rem 0 1rem'>🌙 Little Moon · Created by <b>NilanjanC</b> · Keep asking, keep growing.</div>", unsafe_allow_html=True)
+elif student_access():
+    if billing_gate():
+        grade, subject, topic = render_setup()
+        home(grade, subject, topic)
+        st.markdown("<div style='text-align:center;color:#536174;padding:2rem 0 1rem'>🌙 Little Moon · Created by <b>NilanjanC</b> · Keep asking, keep growing.</div>", unsafe_allow_html=True)
 
 
