@@ -211,7 +211,7 @@ def secret(name: str, default: str = "") -> str:
 
 def auth_request(path: str, payload: dict[str, Any] | None = None, token: str = "") -> dict[str, Any]:
     base = secret("SUPABASE_URL").rstrip("/")
-    anon = secret("SUPABASE_ANON_KEY")
+    anon = secret("SUPABASE_PUBLISHABLE_KEY") or secret("SUPABASE_ANON_KEY")
     if not base or not anon:
         raise RuntimeError("Student sign-in is not configured yet. The app owner must add Supabase settings.")
     headers = {"apikey": anon, "Content-Type": "application/json"}
@@ -224,7 +224,9 @@ def auth_request(path: str, payload: dict[str, Any] | None = None, token: str = 
 
 
 def billing_configured() -> bool:
-    return all(secret(name) for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "ADMIN_PASSWORD"))
+    has_public_key = secret("SUPABASE_PUBLISHABLE_KEY") or secret("SUPABASE_ANON_KEY")
+    has_server_key = secret("SUPABASE_SECRET_KEY") or secret("SUPABASE_SERVICE_ROLE_KEY")
+    return bool(secret("SUPABASE_URL") and has_public_key and has_server_key and secret("ADMIN_PASSWORD"))
 
 
 PLANS = [
@@ -259,8 +261,12 @@ def plan_options() -> list[dict[str, Any]]:
 
 def db_request(method: str, table: str, *, params: dict[str, str] | None = None, body: Any = None, prefer: str = "") -> Any:
     base = secret("SUPABASE_URL").rstrip("/")
-    service = secret("SUPABASE_SERVICE_ROLE_KEY")
-    headers = {"apikey": service, "Authorization": f"Bearer {service}", "Content-Type": "application/json"}
+    service = secret("SUPABASE_SECRET_KEY") or secret("SUPABASE_SERVICE_ROLE_KEY")
+    headers = {"apikey": service, "Content-Type": "application/json"}
+    # Legacy JWT keys need the bearer header. New sb_secret_* keys belong only
+    # in apikey; sending them as Bearer makes Supabase reject them as invalid JWTs.
+    if service.startswith("eyJ"):
+        headers["Authorization"] = f"Bearer {service}"
     if prefer:
         headers["Prefer"] = prefer
     response = requests.request(method, f"{base}/rest/v1/{table}", params=params, json=body, headers=headers, timeout=15)
