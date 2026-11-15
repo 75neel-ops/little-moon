@@ -9,6 +9,7 @@ import re
 import time
 import hmac
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import requests
 from pathlib import Path
 from typing import Any
@@ -248,6 +249,8 @@ def plan_options() -> list[dict[str, Any]]:
                 raise ValueError
             if int(option["amount_rupees"]) < 1 or int(option["duration_days"]) < 1:
                 raise ValueError
+            option["amount_rupees"] = int(option["amount_rupees"])
+            option["duration_days"] = int(option["duration_days"])
         return options
     except (ValueError, TypeError, KeyError, json.JSONDecodeError):
         st.error("PLAN_CONFIG_JSON is invalid. Please correct it in Streamlit Secrets.")
@@ -337,7 +340,7 @@ def access_gate() -> bool:
     active = expires > now
     if active:
         plan = profile.get("plan_label") if paid_until and paid_until > now else "Free two-day trial"
-        st.caption(f"Signed in as {user.get('email', '')} · {plan} · Access until {expires.astimezone().strftime('%d %b %Y, %I:%M %p')}")
+        st.caption(f"Signed in as {user.get('email', '')} · {plan} · Access until {expires.astimezone(ZoneInfo('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')} IST")
         if st.button("Sign out", key="student_signout"):
             st.session_state.pop("student_token", None)
             st.session_state.pop("student_email", None)
@@ -362,7 +365,8 @@ def access_gate() -> bool:
 def razorpay_button_id(plan_id: str) -> str:
     try:
         buttons = json.loads(secret("RAZORPAY_BUTTON_IDS", "{}"))
-        return str(buttons.get(plan_id) or secret("RAZORPAY_PAYMENT_BUTTON_ID", "pl_Tvez6NOZsFJFmN")).strip()
+        button_id = str(buttons.get(plan_id) or secret("RAZORPAY_PAYMENT_BUTTON_ID", "pl_Tvez6NOZsFJFmN")).strip()
+        return button_id if re.fullmatch(r"pl_[A-Za-z0-9]+", button_id) else ""
     except (json.JSONDecodeError, AttributeError):
         return ""
 
@@ -396,7 +400,7 @@ def admin_panel() -> None:
                         start = max(current, datetime.now(timezone.utc)) if current else datetime.now(timezone.utc)
                         expiry = start + timedelta(days=plan["duration_days"])
                         db_request("PATCH", "lm_profiles", params={"user_id": f"eq.{rows[0]['user_id']}"}, body={"access_expires_at": expiry.isoformat(), "plan_label": plan["label"]}, prefer="return=minimal")
-                        st.success(f"{plan['label']} access granted to {email} until {expiry.strftime('%d %b %Y')}.")
+                        st.success(f"{plan['label']} access granted to {email} until {expiry.astimezone(ZoneInfo('Asia/Kolkata')).strftime('%d %b %Y')} IST.")
                 except Exception as exc:
                     st.error(str(exc))
 
