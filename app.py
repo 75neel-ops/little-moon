@@ -7,6 +7,8 @@ import os
 import random
 import re
 import time
+import hmac
+from datetime import datetime, timedelta, timezone
 import requests
 from pathlib import Path
 from typing import Any
@@ -220,23 +222,67 @@ def auth_request(path: str, payload: dict[str, Any] | None = None, token: str = 
     return response.json()
 
 
-def billing_request(path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    base = secret("BILLING_API_URL").rstrip("/")
-    token = st.session_state.get("student_token", "")
-    if not base:
-        raise RuntimeError("Billing service is not connected yet. Please contact the app owner.")
-    response = requests.post(f"{base}/{path.lstrip('/')}", json=payload, headers={"Authorization": f"Bearer {token}"}, timeout=20) if payload is not None else requests.get(f"{base}/{path.lstrip('/')}", headers={"Authorization": f"Bearer {token}"}, timeout=20)
-    if not response.ok:
-        try:
-            message = response.json().get("detail", "Billing request failed.")
-        except Exception:
-            message = "Billing request failed. Please try again."
-        raise RuntimeError(message)
-    return response.json()
-
-
 def billing_configured() -> bool:
-    return all(secret(name) for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "BILLING_API_URL"))
+    return all(secret(name) for name in ("SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "ADMIN_PASSWORD"))
+
+
+PLANS = [
+    {"id": "15-days", "label": "15 days", "amount_rupees": 50, "duration_days": 15},
+    {"id": "30-days", "label": "30 days", "amount_rupees": 100, "duration_days": 30},
+    {"id": "3-months", "label": "3 months", "amount_rupees": 250, "duration_days": 90},
+    {"id": "6-months", "label": "6 months", "amount_rupees": 450, "duration_days": 180},
+    {"id": "1-year", "label": "1 year", "amount_rupees": 800, "duration_days": 365},
+]
+
+
+def plan_options() -> list[dict[str, Any]]:
+    raw = secret("PLAN_CONFIG_JSON")
+    if not raw:
+        return PLANS
+    try:
+        options = json.loads(raw)
+        if not isinstance(options, list) or not options:
+            raise ValueError
+        for option in options:
+            if not all(key in option for key in ("id", "label", "amount_rupees", "duration_days")):
+                raise ValueError
+            if int(option["amount_rupees"]) < 1 or int(option["duration_days"]) < 1:
+                raise ValueError
+        return options
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+        st.error("PLAN_CONFIG_JSON is invalid. Please correct it in Streamlit Secrets.")
+        return PLANS
+
+
+def db_request(method: str, table: str, *, params: dict[str, str] | None = None, body: Any = None, prefer: str = "") -> Any:
+    base = secret("SUPABASE_URL").rstrip("/")
+    service = secret("SUPABASE_SERVICE_ROLE_KEY")
+    headers = {"apikey": service, "Authorization": f"Bearer {service}", "Content-Type": "application/json"}
+    if prefer:
+        headers["Prefer"] = prefer
+    response = requests.request(method, f"{base}/rest/v1/{table}", params=params, json=body, headers=headers, timeout=15)
+    if not response.ok:
+        raise RuntimeError("Access storage is unavailable. Please contact the app owner.")
+    return response.json() if response.content else None
+
+
+def ensure_profile(user: dict[str, Any]) -> dict[str, Any]:
+    uid = user["id"]
+    rows = db_request("GET", "lm_profiles", params={"user_id": f"eq.{uid}", "select": "*", "limit": "1"})
+    if rows:
+        return rows[0]
+    try:
+        made = db_request("POST", "lm_profiles", body={"user_id": uid, "email": user.get("email", "").lower()}, prefer="return=representation")
+        return made[0]
+    except Exception:
+        rows = db_request("GET", "lm_profiles", params={"user_id": f"eq.{uid}", "select": "*", "limit": "1"})
+        if rows:
+            return rows[0]
+        raise
+
+
+def parse_date(value: str | None) -> datetime | None:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
 
 
 def student_access() -> bool:
@@ -276,45 +322,83 @@ def student_access() -> bool:
     return False
 
 
-def billing_gate() -> bool:
+def access_gate() -> bool:
     try:
-        status = billing_request("entitlement")
+        token = st.session_state.student_token
+        user = auth_request("user", token=token)
+        profile = ensure_profile(user)
     except Exception as exc:
-        st.error(f"Access check unavailable: {exc}")
-        st.stop()
-    if status.get("active"):
-        st.caption(f"Signed in as {st.session_state.get('student_email', '')} · {status.get('label', 'Access active')} · Access until {status.get('expires_at', '')[:10]}")
+        st.error(f"Could not check your access: {exc}")
+        return False
+    now = datetime.now(timezone.utc)
+    paid_until = parse_date(profile.get("access_expires_at"))
+    trial_until = parse_date(profile["trial_started_at"]) + timedelta(days=2)
+    expires = paid_until if paid_until and paid_until > now else trial_until
+    active = expires > now
+    if active:
+        plan = profile.get("plan_label") if paid_until and paid_until > now else "Free two-day trial"
+        st.caption(f"Signed in as {user.get('email', '')} · {plan} · Access until {expires.astimezone().strftime('%d %b %Y, %I:%M %p')}")
         if st.button("Sign out", key="student_signout"):
             st.session_state.pop("student_token", None)
             st.session_state.pop("student_email", None)
             st.rerun()
         return True
-    if status.get("trial"):
-        st.info(f"Your free trial has ended. Choose a plan below to continue. {status.get('message', '')}")
-    else:
-        st.info("Your two-day free trial starts now. Enjoy Little Moon!")
-    try:
-        plans = billing_request("plans").get("plans", [])
-    except Exception as exc:
-        st.error(str(exc))
-        return False
+    st.info("Your time has ended. Choose a plan to continue using Little Moon.")
     st.subheader("Choose your access plan")
-    cols = st.columns(min(3, len(plans)))
-    for index, plan in enumerate(plans):
-        with cols[index % len(cols)]:
-            st.markdown(f"### {plan['label']}\n**₹{plan['amount_rupees']}**")
-            if st.button(f"Continue with {plan['label']}", key=f"buy_{plan['id']}", type="primary"):
+    plans = plan_options()
+    plan = st.selectbox("Plan", plans, format_func=lambda item: f"{item['label']} — ₹{item['amount_rupees']}", key="manual_payment_plan")
+    st.markdown(f"Use the Razorpay payment button below to pay **₹{plan['amount_rupees']}** for **{plan['label']}**. Enter the same email you use to sign in to Little Moon.")
+    st.caption("Before confirming in Razorpay, check that the amount shown matches the plan price above.")
+    st.warning("Payment is checked manually, so access may take some time to activate. Please wait for confirmation and do not pay a second time while your payment is being checked.")
+    st.caption("After paying, send your Razorpay payment ID or receipt and your Little Moon email to your teacher/app owner so they can verify the payment and activate your plan.")
+    button_id = razorpay_button_id(plan["id"])
+    if button_id:
+        components.html('<form><script src="https://checkout.razorpay.com/v1/payment-button.js" data-payment_button_id="' + button_id + '" async></script></form>', height=180, scrolling=True)
+    else:
+        st.error("The Razorpay payment button for this plan has not been configured yet.")
+    return False
+
+
+def razorpay_button_id(plan_id: str) -> str:
+    try:
+        buttons = json.loads(secret("RAZORPAY_BUTTON_IDS", "{}"))
+        return str(buttons.get(plan_id) or secret("RAZORPAY_PAYMENT_BUTTON_ID", "pl_Tvez6NOZsFJFmN")).strip()
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+
+
+def admin_panel() -> None:
+    with st.sidebar.expander("🔐 Owner: approve a payment"):
+        if not st.session_state.get("admin_authenticated"):
+            password = st.text_input("Owner password", type="password", key="owner_password")
+            if st.button("Open owner tools", key="owner_login"):
+                if hmac.compare_digest(password, secret("ADMIN_PASSWORD")):
+                    st.session_state.admin_authenticated = True
+                    st.rerun()
+                else:
+                    st.error("That password is not correct.")
+            return
+        if st.button("Close owner tools", key="owner_logout"):
+            st.session_state.admin_authenticated = False
+            st.rerun()
+        email = st.text_input("Student's Little Moon email", key="grant_email").strip().lower()
+        plan = st.selectbox("Access to grant", plan_options(), format_func=lambda item: f"{item['label']} ({item['duration_days']} days)", key="grant_plan")
+        if st.button("Grant access after payment check", type="primary", key="grant_access"):
+            if not email:
+                st.error("Enter the email the student uses to sign in.")
+            else:
                 try:
-                    order = billing_request("create-order", {"plan_id": plan["id"]})
-                    checkout = {"key": order["key_id"], "order_id": order["order_id"], "amount": order["amount_paise"], "currency": "INR", "name": "Little Moon", "description": plan["label"], "prefill": {"email": st.session_state.get("student_email", "")}, "theme": {"color": "#315a44"}}
-                    config = json.dumps(checkout).replace("</", "<\\/")
-                    api = json.dumps(secret("BILLING_API_URL").rstrip("/")).replace("</", "<\\/")
-                    token = json.dumps(st.session_state.student_token).replace("</", "<\\/")
-                    html = f'''<script src="https://checkout.razorpay.com/v1/checkout.js"></script><button id="pay" style="background:#315a44;color:white;padding:12px 18px;border:0;border-radius:10px;font-size:16px;cursor:pointer">Pay ₹{plan['amount_rupees']} securely</button><p id="msg"></p><script>const opts={config}; opts.handler=async function(r){{document.getElementById('msg').innerText='Verifying payment…'; const res=await fetch({api}+'/verify-payment',{{method:'POST',headers:{{'Content-Type':'application/json','Authorization':'Bearer '+{token}}},body:JSON.stringify(r)}}); const data=await res.json(); document.getElementById('msg').innerText=res.ok?'Payment verified! Return to the app and refresh.':(data.detail||'Verification failed. Contact support.');}}; document.getElementById('pay').onclick=()=>new Razorpay(opts).open();</script>'''
-                    components.html(html, height=150)
+                    rows = db_request("GET", "lm_profiles", params={"email": f"eq.{email}", "select": "user_id,access_expires_at", "limit": "1"})
+                    if not rows:
+                        st.error("That student has not signed in to Little Moon yet. Ask them to sign in once, then try again.")
+                    else:
+                        current = parse_date(rows[0].get("access_expires_at"))
+                        start = max(current, datetime.now(timezone.utc)) if current else datetime.now(timezone.utc)
+                        expiry = start + timedelta(days=plan["duration_days"])
+                        db_request("PATCH", "lm_profiles", params={"user_id": f"eq.{rows[0]['user_id']}"}, body={"access_expires_at": expiry.isoformat(), "plan_label": plan["label"]}, prefer="return=minimal")
+                        st.success(f"{plan['label']} access granted to {email} until {expiry.strftime('%d %b %Y')}.")
                 except Exception as exc:
                     st.error(str(exc))
-    return False
 
 st.markdown("""
 <style>
@@ -666,8 +750,9 @@ if not billing_configured():
     grade, subject, topic = render_setup()
     home(grade, subject, topic)
     st.markdown("<div style='text-align:center;color:#536174;padding:2rem 0 1rem'>🌙 Little Moon · Created by <b>NilanjanC</b> · Keep asking, keep growing.</div>", unsafe_allow_html=True)
-elif student_access():
-    if billing_gate():
+else:
+    admin_panel()
+    if student_access() and access_gate():
         grade, subject, topic = render_setup()
         home(grade, subject, topic)
         st.markdown("<div style='text-align:center;color:#536174;padding:2rem 0 1rem'>🌙 Little Moon · Created by <b>NilanjanC</b> · Keep asking, keep growing.</div>", unsafe_allow_html=True)
